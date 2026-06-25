@@ -10,21 +10,19 @@ wheels/
 .venv
 venv/
 
-# Environment files
+# Environment files (contain secrets)
 .env
 backend/.env
 frontend/.env
 
-# Data files (PDFs are committed separately if needed)
-backend/data/*.pdf
+# Large data files (PDFs handled via Supabase Storage)
+backend/data/
 
-# Supabase temp files
+# Supabase CLI temp files
 supabase/.temp/
 
-# Lock files
-uv.lock
-Cargo.lock
-
-# OS files
-Thumbs.db
-.DS_Store
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
