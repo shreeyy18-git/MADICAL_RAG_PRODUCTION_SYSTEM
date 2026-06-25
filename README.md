@@ -32,103 +32,13 @@ A production-grade **Medical Retrieval-Augmented Generation (RAG)** system with 
 ---
 
 ## Architecture
+<img width="2628" height="3186" alt="_- visual selection (5)" src="https://github.com/user-attachments/assets/182c339f-fff6-48ab-ba59-e1c2659febe7" />
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Frontend (React + Vite)                         │
-│                   Vercel (free) — SPA + vercel.json                    │
-└─────────────────────────────┬───────────────────────────────────────────┘
-                              │ HTTPS (REST + SSE streaming)
-                              ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                       Backend (FastAPI + Uvicorn)                        │
-│                    Render (free) — 512MB RAM, 14 packages               │
-│                                                                          │
-│  ┌──────────────┐  ┌───────────────┐  ┌──────────────┐  ┌─────────────┐ │
-│  │ JWT Auth     │  │  Chat Router  │  │  Admin       │  │  Health     │ │
-│  │ (JWKS ES256) │  │  (SSE stream) │  │  /ingest     │  │  Check      │ │
-│  └──────┬───────┘  └───────┬───────┘  └──────┬───────┘  └─────────────┘ │
-│         │                  │                  │                           │
-│         ▼                  ▼                  ▼                           │
-│  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │                    RAG Workflow (LangGraph)                       │   │
-│  │                                                                  │   │
-│  │  1. Guardrails Check    → 2. Query Rewrite    → 3. Hybrid Search │   │
-│  │  4. LLM Reranker        → 5. Context Assembly  → 6. LLM Generate │   │
-│  │  7. Memory Extract      → 8. Guardrails Check  → 9. Cache Store  │   │
-│  └──────────────────────────────────────────────────────────────────┘   │
-│                     │            │             │                         │
-└─────────────────────┼────────────┼─────────────┼─────────────────────────┘
-                      │            │             │
-     ┌────────────────┼────────────┼─────────────┼──────────────────┐
-     │                ▼            ▼             ▼                   │
-     │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-     │  │  Supabase    │  │   Qdrant     │  │  Upstash     │       │
-     │  │  (free)      │  │  (free)      │  │  Redis (free)│       │
-     │  │  ┌─────────┐ │  │  ┌─────────┐ │  │  ┌─────────┐ │       │
-     │  │  │Auth     │ │  │  │Vector   │ │  │  │Rate     │ │       │
-     │  │  │Postgres │ │  │  │384-dim  │ │  │  │Limit    │ │       │
-     │  │  │Storage  │ │  │  │BM25 idx │ │  │  │Cache    │ │       │
-     │  │  │Profiles │ │  │  │Memory   │ │  │  │TTL 24h  │ │       │
-     │  │  └─────────┘ │  │  └─────────┘ │  │  └─────────┘ │       │
-     │  └──────────────┘  └──────────────┘  └──────────────┘       │
-     │                                                             │
-     │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-     │  │  Groq API    │  │  Gemini API  │  │  HuggingFace │       │
-     │  │  (Primary LLM│  │  (Fallback)  │  │  Inference   │       │
-     │  │  Llama 3.3  │  │  Flash 2.0   │  │  (Embeddings) │       │
-     │  │  70B)       │  │              │  │  all-MiniLM  │       │
-     │  └──────────────┘  └──────────────┘  └──────────────┘       │
-     │                                                             │
-     │  ┌──────────────┐                                           │
-     │  │  Langfuse    │  ← Observability (traces, sessions)       │
-     │  │  (Hobby)     │                                           │
-     │  └──────────────┘                                           │
-     └─────────────────────────────────────────────────────────────┘
-```
 
 ### Data Flow
 
-```
-User Message
-    │
-    ▼
-[Guardrails] ──Emergency detected? → Blocked response
-    │
-    ▼
-[Query Rewrite] ──Context-aware reformulation (uses conversation history)
-    │
-    ▼
-[Hybrid Search]
-    ├── Vector Search (Qdrant — cosine similarity, 384-dim)
-    └── Keyword Search (BM25 — rank_bm25, in-memory index)
-    │
-    ▼ (results merged + deduplicated)
-[LLM Reranker] ──Groq re-scores top-20 results, keeps top-8
-    │
-    ▼
-[Context Assembly]
-    ├── Cross-session history (similar past conversations)
-    ├── Long-term memory (extracted user facts)
-    ├── User profile (name, age, conditions)
-    ├── Retrieved chunks (top-8 scored)
-    └── System prompt (structured response format)
-    │
-    ▼
-[LLM Generate] ──Groq (primary) → Gemini (fallback)
-    │
-    ▼
-[Memory Extract] ──LLM extracts facts from response → stored in Qdrant
-    │
-    ▼
-[Guardrails] ──Post-generation safety check
-    │
-    ▼
-[Cache] ──Response stored in Upstash Redis (24h TTL)
-    │
-    ▼
-Response → User (SSE streaming or full response)
-```
+<img width="2184" height="7019" alt="_- visual selection (6)" src="https://github.com/user-attachments/assets/af5baa72-48d0-4d55-9a55-3fd5299317e2" />
+
 
 ---
 
