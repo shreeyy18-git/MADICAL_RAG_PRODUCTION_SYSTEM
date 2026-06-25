@@ -1,28 +1,30 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
-build/
-dist/
-wheels/
 *.egg-info
+.venv/
+backend/.venv/
 
-# Virtual environments
-.venv
-venv/
-
-# Environment files (contain secrets)
+# Environment
 .env
 backend/.env
-frontend/.env
 
-# Large data files (PDFs handled via Supabase Storage)
-backend/data/
+# Node
+node_modules/
+frontend/node_modules/
 
-# Supabase CLI temp files
-supabase/.temp/
+# Build output
+dist/
+frontend/dist/
+build/
 
 # IDE
-.idea/
 .vscode/
-*.swp
-*.swo
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test_*.py
