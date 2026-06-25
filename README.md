@@ -1,93 +1,358 @@
 # Medical RAG Production
 
-A production-grade Medical Retrieval-Augmented Generation (RAG) system with admin document ingestion, user chat, streaming responses, and zero-cost free-tier infrastructure. Deployed on Render (backend) + Vercel (frontend).
+> Created by **Shreeyansh Asati** — AI/ML Engineer  
+> [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue)](https://www.linkedin.com/in/shreeyansh-asati-18shreey/)  
+> [![GitHub](https://img.shields.io/badge/GitHub-Follow-black)](https://github.com/SHREEYANSHGIT)  
+> [![Live Backend](https://img.shields.io/badge/Backend-Render-46E3B7)](https://medical-rag-api-fl26.onrender.com/health)  
+> [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
+A production-grade **Medical Retrieval-Augmented Generation (RAG)** system with admin PDF ingestion, user chat with token-by-token streaming, structured clinical responses, and zero-cost free-tier infrastructure. Deployed on Render (backend) + Vercel (frontend).
+
+---
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [API Endpoints](#api-endpoints)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Quick Start (Local)](#quick-start-local)
+- [Deployment](#deployment)
+  - [Backend → Render](#backend--render)
+  - [Frontend → Vercel](#frontend--vercel)
+- [Environment Variables](#environment-variables)
+- [Feature Flags](#feature-flags)
+- [Design Decisions](#design-decisions)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
 
 ## Architecture
 
 ```
-Frontend (React/Vite) ──HTTP──> Backend (FastAPI)
-                │                       │
-           Vercel (free)           Render (free)
-                                     │
-         ┌───────────────────────────┼───────────────────────────┐
-         ▼                           ▼                           ▼
-    Supabase                      Qdrant                    Upstash Redis
- (Auth, DB, Storage)         (Vector store)              (Rate limiting + cache)
-         │                           │
-         ▼                           ▼
-    Groq API                    Hugging Face
-  (Primary LLM)              Inference API
-         │                 (Cloud embeddings)
-         ▼
-    Gemini Flash
-  (Fallback LLM)
-         │
-         ▼
-    Langfuse Hobby
-  (Observability)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Frontend (React + Vite)                         │
+│                   Vercel (free) — SPA + vercel.json                    │
+└─────────────────────────────┬───────────────────────────────────────────┘
+                              │ HTTPS (REST + SSE streaming)
+                              ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       Backend (FastAPI + Uvicorn)                        │
+│                    Render (free) — 512MB RAM, 14 packages               │
+│                                                                          │
+│  ┌──────────────┐  ┌───────────────┐  ┌──────────────┐  ┌─────────────┐ │
+│  │ JWT Auth     │  │  Chat Router  │  │  Admin       │  │  Health     │ │
+│  │ (JWKS ES256) │  │  (SSE stream) │  │  /ingest     │  │  Check      │ │
+│  └──────┬───────┘  └───────┬───────┘  └──────┬───────┘  └─────────────┘ │
+│         │                  │                  │                           │
+│         ▼                  ▼                  ▼                           │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │                    RAG Workflow (LangGraph)                       │   │
+│  │                                                                  │   │
+│  │  1. Guardrails Check    → 2. Query Rewrite    → 3. Hybrid Search │   │
+│  │  4. LLM Reranker        → 5. Context Assembly  → 6. LLM Generate │   │
+│  │  7. Memory Extract      → 8. Guardrails Check  → 9. Cache Store  │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                     │            │             │                         │
+└─────────────────────┼────────────┼─────────────┼─────────────────────────┘
+                      │            │             │
+     ┌────────────────┼────────────┼─────────────┼──────────────────┐
+     │                ▼            ▼             ▼                   │
+     │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+     │  │  Supabase    │  │   Qdrant     │  │  Upstash     │       │
+     │  │  (free)      │  │  (free)      │  │  Redis (free)│       │
+     │  │  ┌─────────┐ │  │  ┌─────────┐ │  │  ┌─────────┐ │       │
+     │  │  │Auth     │ │  │  │Vector   │ │  │  │Rate     │ │       │
+     │  │  │Postgres │ │  │  │384-dim  │ │  │  │Limit    │ │       │
+     │  │  │Storage  │ │  │  │BM25 idx │ │  │  │Cache    │ │       │
+     │  │  │Profiles │ │  │  │Memory   │ │  │  │TTL 24h  │ │       │
+     │  │  └─────────┘ │  │  └─────────┘ │  │  └─────────┘ │       │
+     │  └──────────────┘  └──────────────┘  └──────────────┘       │
+     │                                                             │
+     │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+     │  │  Groq API    │  │  Gemini API  │  │  HuggingFace │       │
+     │  │  (Primary LLM│  │  (Fallback)  │  │  Inference   │       │
+     │  │  Llama 3.3  │  │  Flash 2.0   │  │  (Embeddings) │       │
+     │  │  70B)       │  │              │  │  all-MiniLM  │       │
+     │  └──────────────┘  └──────────────┘  └──────────────┘       │
+     │                                                             │
+     │  ┌──────────────┐                                           │
+     │  │  Langfuse    │  ← Observability (traces, sessions)       │
+     │  │  (Hobby)     │                                           │
+     │  └──────────────┘                                           │
+     └─────────────────────────────────────────────────────────────┘
 ```
 
-## Stack
+### Data Flow
 
-| Component | Service | Tier |
-|-----------|---------|------|
-| Frontend | React + Vite | Vercel (free) |
-| Backend | FastAPI + Uvicorn | Render (free) |
-| Auth + DB + Storage | Supabase | Free |
-| Vector Store | Qdrant Cloud | Free |
-| Rate Limiting + Cache | Upstash Redis | Free |
-| Primary LLM | Groq (Llama 3.3 70B) | Free |
-| Fallback LLM | Gemini Flash 2.0 | Free |
-| Cloud Embeddings | Hugging Face Inference API | Free |
-| BM25 Search | In-memory (rank_bm25) | Free |
-| Observability | Langfuse Hobby | Free |
+```
+User Message
+    │
+    ▼
+[Guardrails] ──Emergency detected? → Blocked response
+    │
+    ▼
+[Query Rewrite] ──Context-aware reformulation (uses conversation history)
+    │
+    ▼
+[Hybrid Search]
+    ├── Vector Search (Qdrant — cosine similarity, 384-dim)
+    └── Keyword Search (BM25 — rank_bm25, in-memory index)
+    │
+    ▼ (results merged + deduplicated)
+[LLM Reranker] ──Groq re-scores top-20 results, keeps top-8
+    │
+    ▼
+[Context Assembly]
+    ├── Cross-session history (similar past conversations)
+    ├── Long-term memory (extracted user facts)
+    ├── User profile (name, age, conditions)
+    ├── Retrieved chunks (top-8 scored)
+    └── System prompt (structured response format)
+    │
+    ▼
+[LLM Generate] ──Groq (primary) → Gemini (fallback)
+    │
+    ▼
+[Memory Extract] ──LLM extracts facts from response → stored in Qdrant
+    │
+    ▼
+[Guardrails] ──Post-generation safety check
+    │
+    ▼
+[Cache] ──Response stored in Upstash Redis (24h TTL)
+    │
+    ▼
+Response → User (SSE streaming or full response)
+```
+
+---
+
+## Tech Stack
+
+| Layer | Component | Service | Tier | Purpose |
+|-------|-----------|---------|------|---------|
+| **Frontend** | React 19 + Vite | Vercel | Free | SPA, client-side routing |
+| **Backend** | FastAPI + Uvicorn | Render | Free (512MB) | REST API, SSE streaming |
+| **Auth** | Supabase Auth | Supabase | Free | JWT tokens (ES256), user management |
+| **Database** | PostgreSQL | Supabase | Free | User profiles, conversations |
+| **Storage** | Supabase Storage | Supabase | Free | PDF documents |
+| **Vector Store** | Qdrant Cloud | Qdrant | Free (1GB) | 384-dim embeddings, 3 collections |
+| **Rate Limiting** | Upstash Redis | Upstash | Free | 10 req/min per user |
+| **Cache** | Upstash Redis | Upstash | Free | Response cache (24h TTL) |
+| **Primary LLM** | Llama 3.3 70B | Groq | Free | 30 req/min, <1s latency |
+| **Fallback LLM** | Gemini Flash 2.0 | Google AI | Free | 60 req/min |
+| **LLM Gateway** | LiteLLM | — | Built-in | Proxy to multiple providers |
+| **Embeddings** | all-MiniLM-L6-v2 | Hugging Face Inference API | Free | 384-dim, cloud inference |
+| **Keyword Search** | BM25 (rank_bm25) | In-memory | Free | Term-frequency based retrieval |
+| **Observability** | Langfuse | Langfuse Hobby | Free | Traces, sessions, cost tracking |
+
+### Backend Packages (14 total — minimal footprint)
+
+```text
+fastapi, uvicorn, httpx, pydantic, pydantic-settings
+supabase-python, qdrant-client, upstash-redis
+litellm, langchain-huggingface, rank-bm25
+langfuse, pyjwt, cryptography
+```
+
+No PyTorch, transformers, sentence-transformers, langchain, langgraph, or other heavy dependencies.
+
+---
 
 ## Features
 
-- **PDF Ingestion**: Admin-only upload/ingest pipeline (PyMuPDF chunking → HF embeddings → Qdrant)
-- **Hybrid Search**: Vector (Qdrant) + BM25 (keyword) combined retrieval
-- **LLM Reranker**: Query-aware result re-scoring via Groq
-- **Query Rewrite**: Context-aware question reformulation
-- **Long-term Memory**: Fact extraction and retrieval across sessions
-- **Cross-session History**: Embedding similarity-based past conversation recall
-- **Streaming Responses**: SSE-based token-by-token generation
-- **Guardrails**: Emergency keyword detection + post-generation safety check
-- **Rate Limiting**: Per-user via Upstash Redis (10 req/min)
-- **Response Caching**: Identical query dedup (24h TTL via Upstash)
-- **Observability**: Full Langfuse tracing with session grouping
-- **JWT Auth**: Supabase Auth with JWKS ES256 verification
-- **User Profile**: Name, age, conditions stored and injected into RAG context
-- **Structured Answers**: LLM prompted to return Overview → Key Points → Details → Sources sections
-- **Responsive UI**: Mobile-friendly with 3 breakpoint levels
+### Core RAG
+- **PDF Ingestion** (Admin): Upload PDFs → PyMuPDF text extraction → semantic chunking → HF cloud embeddings → Qdrant vector storage
+- **Hybrid Search**: Vector cosine similarity (Qdrant) + BM25 keyword search (rank_bm25), merged with normalized scores
+- **LLM Reranker**: Groq re-scores top-20 results for query-aware relevance, keeps top-8
+- **Query Rewrite**: Context-aware reformulation using conversation history and user profile
+- **Structured Responses**: LLM prompted to return sections — Overview, Key Points (with [N] citations), Details, Sources, plus educational disclaimer
+
+### User Features
+- **Registration / Login**: JWT-based auth via Supabase (JWKS ES256 verification)
+- **Streaming Chat**: SSE endpoint `/chat/stream` with token-by-token output
+- **Conversation History**: Create, read, delete conversations with full message history
+- **Cross-Session Memory**: Embedding similarity-based recall of past conversations
+- **Long-Term Memory**: Extracted facts (diagnoses, medications, symptoms) stored per-user
+- **User Profile**: Name, age, medical conditions — injected into RAG context
+
+### Safety & Reliability
+- **Guardrails**: Emergency keyword detection (suicide, violence) → immediate block. Post-generation safety check on LLM output
+- **Rate Limiting**: 10 requests/min per user via Upstash Redis sliding window
+- **Response Caching**: Identical queries deduplicated for 24h (includes `conversation_id` in cache key)
+- **Fallback Chain**: Groq → Gemini → LiteLLM → error message
+
+### Observability
+- **Langfuse Tracing**: Full trace per request with `session_id` (conversation ID)
+- **Feature Flag Reporting**: Health endpoint exposes all active flags
+- **Render Health Checks**: Automatic restart on failure
+
+### Frontend
+- **Responsive UI**: 3 breakpoint levels (mobile / tablet / desktop)
+- **Structured Rendering**: Markdown → styled HTML with collapsible sections, citation superscripts
+- **Protected Routes**: Auth guard wrapping chat, history, profile pages
+- **Landing Page**: Feature summary, login/register CTA
+- **Dark/Light Theme**: Modern color scheme
+
+---
+
+## API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/auth/register` | No | Register new user (email, password, name, age) |
+| `POST` | `/auth/login` | No | Login, returns JWT access token |
+| `GET` | `/health` | No | Health check + feature flags status |
+| `POST` | `/chat` | JWT | Non-streaming chat (full response) |
+| `POST` | `/chat/stream` | JWT | SSE streaming chat (token-by-token) |
+| `GET` | `/chat/history` | JWT | List user conversations |
+| `GET` | `/chat/history/{id}` | JWT | Get conversation messages |
+| `DELETE` | `/chat/history/{id}` | JWT | Delete conversation |
+| `PUT` | `/chat/history/{id}` | JWT | Rename conversation |
+| `GET` | `/api/profile` | JWT | Get user profile |
+| `PUT` | `/api/profile` | JWT | Update user profile |
+| `POST` | `/admin/ingest` | JWT+Admin | Ingest PDF documents (requires admin role) |
+
+---
+
+## Project Structure
+
+```
+MADICAL_RAG_PRODUCTION_SYSTEM/
+│
+├── backend/                          # FastAPI backend (deployed on Render)
+│   ├── app/
+│   │   ├── main.py                   # App entry + CORS (reads CORS_ORIGINS env)
+│   │   ├── config.py                 # Settings + all feature flags
+│   │   │
+│   │   ├── api/
+│   │   │   ├── deps.py               # Dependency injection (get_current_user)
+│   │   │   └── routes/
+│   │   │       ├── health.py         # GET /health
+│   │   │       ├── auth.py           # POST /auth/register, /auth/login
+│   │   │       ├── chat.py           # POST /chat, /chat/stream, history CRUD
+│   │   │       ├── documents.py      # POST /admin/ingest
+│   │   │       └── profile.py        # GET/PUT /api/profile
+│   │   │
+│   │   ├── core/
+│   │   │   ├── security.py           # JWT verification (JWKS ES256)
+│   │   │   └── logging.py            # Logging configuration
+│   │   │
+│   │   ├── models/
+│   │   │   └── schemas.py            # Pydantic models for all endpoints
+│   │   │
+│   │   ├── db/
+│   │   │   └── supabase_schema.sql   # PostgreSQL schema for profiles + conversations
+│   │   │
+│   │   └── services/
+│   │       ├── supabase_client.py    # Supabase singleton client
+│   │       ├── embeddings.py         # HF Inference API → Gemini fallback
+│   │       ├── llm.py                # LLM gateway (Groq → Gemini → error)
+│   │       ├── graph.py              # RAG workflow (nodes + stream generator)
+│   │       ├── retrieval.py          # Hybrid search orchestrator
+│   │       ├── vector_store.py       # Qdrant vector search
+│   │       ├── keyword_search.py     # BM25 in-memory search
+│   │       ├── reranker.py           # LLM-based result re-scoring
+│   │       ├── query_rewrite.py      # Context-aware query reformulation
+│   │       ├── memory.py             # Long-term fact extraction + retrieval
+│   │       ├── guardrails.py         # Emergency detection + safety checks
+│   │       ├── rate_limit.py         # Upstash Redis sliding window
+│   │       ├── cache.py              # Upstash response cache
+│   │       ├── chunking.py           # PDF text chunking
+│   │       └── observability.py      # Langfuse tracing
+│   │
+│   ├── scripts/
+│   │   ├── ingest_documents.py       # Bulk PDF ingestion CLI
+│   │   └── evaluate_ragas.py         # RAGAS evaluation (optional)
+│   │
+│   ├── render.yaml                   # Render Blueprint (38 env vars, health check)
+│   ├── Dockerfile                    # python:3.12-slim, 14 packages
+│   ├── requirements.txt              # Pinned 14 dependencies
+│   ├── .env.example                  # All env vars documented
+│   └── test_*.py                     # Integration tests
+│
+├── frontend/                         # React + Vite SPA (deployed on Vercel)
+│   ├── src/
+│   │   ├── main.jsx                  # React entry + router
+│   │   ├── App.jsx                   # App shell + auth context
+│   │   ├── App.css                   # All styles (including structured answers)
+│   │   ├── index.css                 # Global resets
+│   │   │
+│   │   ├── pages/
+│   │   │   ├── Landing.jsx           # Landing page with feature cards
+│   │   │   ├── Login.jsx             # Login form
+│   │   │   ├── Dashboard.jsx         # Post-login dashboard
+│   │   │   ├── Chat.jsx              # Chat interface with streaming
+│   │   │   ├── History.jsx           # Conversation history list
+│   │   │   └── Profile.jsx           # User profile editor
+│   │   │
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx            # Top navigation
+│   │   │   ├── Sidebar.jsx           # Mobile sidebar drawer
+│   │   │   ├── ChatBubble.jsx        # Message bubble + structured rendering
+│   │   │   ├── ProtectedRoute.jsx    # Auth route guard
+│   │   │   ├── Card.jsx              # Reusable feature card
+│   │   │   └── Loader.jsx            # Loading spinner
+│   │   │
+│   │   └── services/
+│   │       ├── api.js                # Fetch wrapper (VITE_API_URL aware)
+│   │       ├── auth.js               # Auth API calls
+│   │       └── supabase.js           # Supabase client config
+│   │
+│   ├── vercel.json                   # SPA rewrite rules
+│   ├── vite.config.js                # Dev proxy → localhost:8000
+│   └── package.json                  # React 19, Vite
+│
+├── .env.example                      # Root-level reference
+├── pyproject.toml                    # Python project metadata
+└── requirements.txt                  # Root requirements (same 14 packages)
+```
+
+---
 
 ## Prerequisites
 
-- Python 3.12+
-- Node.js 18+
-- Supabase project (free tier)
-- Qdrant Cloud cluster (free tier)
-- Groq API key (free at console.groq.com)
-- Gemini API key (free at aistudio.google.com)
-- Hugging Face token (free at huggingface.co/settings/tokens)
-- Upstash Redis database (free)
-- Langfuse project (free Hobby tier)
+- **Python 3.12+**
+- **Node.js 18+** (npm 9+)
+- **Supabase project** (free tier at supabase.com)
+- **Qdrant Cloud cluster** (free 1GB tier at cloud.qdrant.io)
+- **Groq API key** (free at console.groq.com)
+- **Gemini API key** (free at aistudio.google.com)
+- **Hugging Face token** (free at huggingface.co/settings/tokens)
+- **Upstash Redis database** (free at upstash.com)
+- **Langfuse project** (free Hobby tier at langfuse.com)
+- **GitHub account** (for Render + Vercel deployment)
 
-## Quick Start
+---
 
-### Backend
+## Quick Start (Local)
+
+### 1. Backend Setup
 
 ```bash
 cd backend
 python -m venv venv
-# source venv/bin/activate  (Linux)
-# venv\Scripts\activate     (Windows)
+
+# Activate:
+#   Linux/macOS: source venv/bin/activate
+#   Windows:     venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
 cp .env.example .env
-# Fill in all API keys and URLs
+```
+
+Edit `.env` with your API keys (all required keys documented in `.env.example`).
+
+```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Frontend
+### 2. Frontend Setup
 
 ```bash
 cd frontend
@@ -95,99 +360,304 @@ npm install
 npm run dev
 ```
 
-### Verify
+### 3. Verify
 
 ```bash
+# Health check
 curl http://localhost:8000/health
-# {"status":"ok","phase_flags":{"hybrid_search":true,...,"huggingface_embeddings":true,"local_embeddings":false}}
+
+# Expected:
+# {"status":"ok","phase_flags":{"hybrid_search":true,"query_rewrite":true,
+#  "llm_rerank":true,"long_term_memory":true,"rate_limiting":true,
+#  "guardrails":true,"observability":true,"huggingface_embeddings":true,
+#  "local_embeddings":false}}
+
+# Register a user
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"Test123!","name":"Test User","age":30}'
+
+# Login
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"Test123!"}'
+
+# Chat (replace TOKEN with your JWT)
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"message":"What are the symptoms of diabetes?","conversation_id":"uuid-here"}'
+
+# Stream chat
+curl -N -X POST http://localhost:8000/chat/stream \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"message":"What are the symptoms of diabetes?","conversation_id":"uuid-here"}'
 ```
 
-## Project Structure
-
-```
-backend/
-  app/
-    main.py              FastAPI app entry point (+ CORS from env var)
-    config.py            Settings + feature flags
-    core/security.py     JWT verification (JWKS ES256)
-    api/routes/
-      health.py, auth.py, chat.py, documents.py, profile.py
-    services/
-      supabase_client.py, embeddings.py (HF cloud / Gemini fallback)
-      llm.py (Groq/Gemini/LiteLLM + streaming), graph.py (workflow)
-      retrieval.py, vector_store.py, keyword_search.py (BM25)
-      reranker.py, query_rewrite.py, memory.py, rate_limit.py
-      guardrails.py, observability.py, cache.py, chunking.py
-    db/supabase_schema.sql
-    render.yaml           Render Blueprint (38 env vars)
-    .env.example
-  scripts/
-    ingest_documents.py   Bulk PDF ingestion
-frontend/
-  src/
-    pages/                Landing, Login, Dashboard, Chat, History, Profile
-    components/           ProtectedRoute, Sidebar, ChatBubble, Loader
-    services/             auth.js, api.js (VITE_API_URL aware)
-  vercel.json             SPA rewrite rules
-```
-
-## API Endpoints
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/auth/register` | No | Register new user |
-| POST | `/auth/login` | No | Login, returns JWT |
-| GET | `/health` | No | Health check + feature flags |
-| POST | `/chat` | JWT | Non-streaming chat |
-| POST | `/chat/stream` | JWT | SSE streaming chat |
-| GET | `/chat/history` | JWT | List conversations |
-| GET | `/chat/history/{id}` | JWT | Get conversation messages |
-| DELETE | `/chat/history/{id}` | JWT | Delete conversation |
-| GET | `/api/profile` | JWT | Get user profile |
-| PUT | `/api/profile` | JWT | Update user profile |
-| POST | `/admin/ingest` | JWT+Admin | Ingest PDF documents |
+---
 
 ## Deployment
 
 ### Backend → Render
 
-1. Push repo to GitHub
-2. In Render dashboard: New Web Service → connect repo → use `backend/render.yaml` Blueprint
-3. Fill all `sync: false` secrets (Supabase, Qdrant, Groq, Gemini, HF, Upstash, Langfuse keys)
-4. Set `CORS_ORIGINS` to `https://your-app.vercel.app`
-5. Free tier: 512MB RAM, spins down after 15 min idle (~30s cold start)
+1. Push repository to GitHub
+2. Go to [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
+3. Connect your GitHub repo — Render auto-detects `render.yaml`
+4. Fill all `sync: false` secrets in Render's environment UI:
+   - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
+   - `QDRANT_URL`, `QDRANT_API_KEY`
+   - `GROQ_API_KEY`, `GEMINI_API_KEY`
+   - `HUGGINGFACE_API_TOKEN`
+   - `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`
+   - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`
+5. Set `CORS_ORIGINS` to `*` (for development) or your Vercel URL
+6. Click **Apply** — Render builds and deploys
+
+**Limitations**:
+- Free tier spins down after 15 minutes idle (~30s cold start on next request)
+- 512MB RAM — 14-package setup fits comfortably
+- Use Render's **Cron Jobs** or a keepalive service to prevent spin-down
+
+**Environment variables in Render**:
+
+| Variable | How to Set |
+|----------|-----------|
+| `SUPABASE_URL` | Manual (sync: false) |
+| `SUPABASE_SERVICE_KEY` | Manual (sync: false) |
+| `QDRANT_URL` | Manual (sync: false) |
+| `QDRANT_API_KEY` | Manual (sync: false) |
+| `GROQ_API_KEY` | Manual (sync: false) |
+| `GEMINI_API_KEY` | Manual (sync: false) |
+| `HUGGINGFACE_API_TOKEN` | Manual (sync: false) |
+| `UPSTASH_REDIS_URL` | Manual (sync: false) |
+| `UPSTASH_REDIS_TOKEN` | Manual (sync: false) |
+| `LANGFUSE_PUBLIC_KEY` | Manual (sync: false) |
+| `LANGFUSE_SECRET_KEY` | Manual (sync: false) |
+| `LANGFUSE_HOST` | Manual (sync: false) |
+| `CORS_ORIGINS` | Manual — set to `*` or your frontend URL |
+| All others | Auto-synced from `render.yaml` |
 
 ### Frontend → Vercel
 
-1. Import repo → Root Directory: `frontend`
-2. Framework preset: Vite
-3. Environment variable: `VITE_API_URL` = `https://your-app.onrender.com`
-4. `vercel.json` handles SPA routing automatically
+1. Go to [Vercel Dashboard](https://vercel.com) → **Add New Project**
+2. Import your GitHub repository
+3. Configure:
+
+   | Setting | Value |
+   |---------|-------|
+   | **Root Directory** | `frontend` |
+   | **Framework Preset** | Vite |
+   | **Build Command** | `npm run build` (auto-detected) |
+   | **Output Directory** | `dist` (auto-detected) |
+
+4. Add environment variable:
+   - `VITE_API_URL` = `https://your-app.onrender.com`
+
+5. Click **Deploy**
+
+6. After deployment, update backend `CORS_ORIGINS` to include your Vercel domain:
+   ```
+   CORS_ORIGINS=https://your-app.vercel.app,http://localhost:5173
+   ```
+
+### Deployed URLs
+
+| Service | URL |
+|---------|-----|
+| Backend (Render) | `https://medical-rag-api-fl26.onrender.com` |
+| Backend Health | `https://medical-rag-api-fl26.onrender.com/health` |
+| Frontend (Vercel) | `https://your-app.vercel.app` |
+
+---
+
+## Environment Variables
+
+Full reference — all 38 variables used by the system (see `backend/.env.example` for placeholder template):
+
+### Core
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ENVIRONMENT` | No | `development` | Runtime environment |
+| `SUPABASE_URL` | **Yes** | — | Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | **Yes** | — | Supabase service role key |
+| `SUPABASE_JWT_SECRET` | No | (empty) | Only needed for HS256; JWKS used by default |
+
+### Qdrant (Vector Store)
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `QDRANT_URL` | **Yes** | — | Qdrant Cloud cluster URL |
+| `QDRANT_API_KEY` | **Yes** | — | Qdrant API key |
+| `QDRANT_COLLECTION` | No | `medical_chunks_local` | Collection name for chunks |
+| `QDRANT_COLLECTION_MEMORY` | No | `medical_memory` | Collection for long-term memory |
+
+### LLM Providers
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GROQ_API_KEY` | **Yes** | — | Groq Cloud API key |
+| `GROQ_MODEL` | No | `llama-3.3-70b-versatile` | Groq model name |
+| `GEMINI_API_KEY` | **Yes** | — | Google AI Studio API key |
+| `GEMINI_MODEL` | No | `gemini-2.0-flash` | Gemini model name |
+
+### Embeddings
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `HUGGINGFACE_API_TOKEN` | **Yes** | — | Hugging Face Inference API token |
+| `EMBEDDING_MODEL` | No | `sentence-transformers/all-MiniLM-L6-v2` | HF embedding model (384-dim) |
+
+### Redis (Upstash)
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `UPSTASH_REDIS_URL` | **Yes** | — | Upstash Redis REST URL |
+| `UPSTASH_REDIS_TOKEN` | **Yes** | — | Upstash Redis REST token |
+
+### Observability (Langfuse)
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `LANGFUSE_PUBLIC_KEY` | **Yes** | — | Langfuse public key |
+| `LANGFUSE_SECRET_KEY` | **Yes** | — | Langfuse secret key |
+| `LANGFUSE_HOST` | No | `https://cloud.langfuse.com` | Langfuse API host |
+
+### CORS
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `CORS_ORIGINS` | No | `*` | Comma-separated allowed origins |
+
+### Feature Flags
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_HYBRID_SEARCH` | `true` | Vector + BM25 combined retrieval |
+| `ENABLE_QUERY_REWRITE` | `true` | LLM-based query reformulation |
+| `ENABLE_LLM_RERANK` | `true` | LLM-based result re-scoring |
+| `ENABLE_LONG_TERM_MEMORY` | `true` | Cross-session fact storage |
+| `ENABLE_CROSS_SESSION_HISTORY` | `true` | Past conversation recall |
+| `ENABLE_GUARDRAILS` | `true` | Emergency + safety checks |
+| `ENABLE_RATE_LIMITING` | `true` | Per-user rate limits |
+| `ENABLE_RESPONSE_CACHE` | `true` | Identical query dedup |
+| `ENABLE_OBSERVABILITY` | `true` | Langfuse tracing |
+| `ENABLE_LANGGRAPH` | `true` | Workflow orchestrator |
+| `ENABLE_HUGGINGFACE_EMBEDDINGS` | `true` | HF cloud embeddings |
+| `ENABLE_LOCAL_EMBEDDINGS` | `false` | Local embeddings (requires PyTorch) |
+
+### Admin
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ADMIN_EMAILS` | No | `admin@example.com` | Comma-separated admin emails |
+
+### LiteLLM (optional)
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `LITELLM_API_KEY` | No | — | LiteLLM proxy key |
+| `LITELLM_BASE_URL` | No | — | LiteLLM proxy URL |
+
+---
 
 ## Feature Flags
 
-All configured via `.env`. Health endpoint reports active flags.
+All flags are configured through environment variables and reported via the `/health` endpoint. Toggle any flag at runtime by changing the env var and restarting the service.
 
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `ENABLE_HYBRID_SEARCH` | true | Vector + BM25 retrieval |
-| `ENABLE_QUERY_REWRITE` | true | LLM query rewriting |
-| `ENABLE_LLM_RERANK` | true | LLM result re-scoring |
-| `ENABLE_LONG_TERM_MEMORY` | true | Cross-session facts |
-| `ENABLE_RATE_LIMITING` | true | Upstash per-user limits |
-| `ENABLE_GUARDRAILS` | true | Emergency + safety checks |
-| `ENABLE_OBSERVABILITY` | true | Langfuse tracing |
-| `ENABLE_RESPONSE_CACHE` | true | Cache identical queries |
-| `ENABLE_LANGGRAPH` | true | Workflow orchestrator |
-| `ENABLE_CROSS_SESSION_HISTORY` | true | Past conversation recall |
-| `ENABLE_HUGGINGFACE_EMBEDDINGS` | true | Cloud embeddings (HF Inference API) |
-| `ENABLE_LOCAL_EMBEDDINGS` | false | Local PyTorch (not recommended on free tier) |
-| `ENABLE_QDRANT_MEMORY` | false | Qdrant-based memory store |
+| Flag | Default | When Disabled |
+|------|---------|---------------|
+| `ENABLE_HYBRID_SEARCH` | true | Falls back to vector-only search |
+| `ENABLE_QUERY_REWRITE` | true | Sends original user query directly |
+| `ENABLE_LLM_RERANK` | true | Uses raw Qdrant + BM25 scores |
+| `ENABLE_LONG_TERM_MEMORY` | true | No fact extraction or retrieval |
+| `ENABLE_CROSS_SESSION_HISTORY` | true | No past conversation recall |
+| `ENABLE_GUARDRAILS` | true | No safety checks |
+| `ENABLE_RATE_LIMITING` | true | No request limits |
+| `ENABLE_RESPONSE_CACHE` | true | Every request generates fresh response |
+| `ENABLE_OBSERVABILITY` | true | No Langfuse tracing |
+| `ENABLE_LANGGRAPH` | true | Direct sequential code (no orchestrator) |
+| `ENABLE_HUGGINGFACE_EMBEDDINGS` | true | Falls to Gemini or local embeddings |
+| `ENABLE_LOCAL_EMBEDDINGS` | false | Only used if HF cloud unavailable |
+
+---
 
 ## Design Decisions
 
-- **Hugging Face cloud embeddings** instead of local PyTorch — avoids 800MB torch install, stays within Render's 512MB RAM. Uses `sentence-transformers/all-MiniLM-L6-v2` (384-dim) via HF Inference API.
-- **Groq primary, Gemini fallback** — both free, both fast. LiteLLM available as optional gateway.
-- **JWKS auth** instead of shared JWT secret — works with Supabase's default ES256 signing keys.
-- **Custom guardrails** instead of `guardrails-ai` library — lighter weight, no extra dependencies.
-- **Manual workflow** instead of LangGraph StateGraph — same sequential logic, no dependency on langgraph at runtime.
+### Why Hugging Face Cloud Embeddings Instead of Local PyTorch?
+
+- **Memory constraint**: PyTorch + sentence-transformers = 800MB+ install size and ~500MB RAM at runtime — exceeds Render's 512MB free tier.
+- **Solution**: `sentence-transformers/all-MiniLM-L6-v2` (384-dim) via Hugging Face Inference API. A single `POST` request replaces the entire local pipeline.
+- **Fallback chain**: HF API → Gemini embedding API → (future) local embeddings. System works even if HF is rate-limited.
+- **Library**: `langchain-huggingface` provides `HuggingFaceEndpointEmbeddings` — one-line integration.
+
+### Why Groq as Primary LLM?
+
+- **Speed**: Llama 3.3 70B on Groq runs at ~500 tokens/sec, enabling real-time streaming even on free tier.
+- **Cost**: 30 requests/min free, no credit card required.
+- **Fallback**: Gemini Flash 2.0 (free, 60 req/min) handles overflow and embedding.
+
+### Why JWKS Instead of Shared JWT Secret?
+
+- Supabase's default signing keys are ES256 (asymmetric). A shared `SUPABASE_JWT_SECRET` only works for HS256 — which requires disabling ES256 or using a custom access token.
+- **JWKS verification** downloads the public key from Supabase's `/.well-known/jwks.json` and verifies signatures without ever storing a secret locally.
+
+### Why Custom Guardrails Instead of guardrails-ai Library?
+
+- `guardrails-ai` pulls in `pydantic` v1/v2 conflicts, `transformers`, and other heavy deps.
+- Custom guardrails are two lightweight regex checks (emergency keywords + post-generation safety) — under 50 lines of code.
+
+### Why Manual Workflow Instead of LangGraph StateGraph?
+
+- The original code used LangGraph's `StateGraph` for orchestration. After removing the `langgraph` dependency, the workflow runs as sequential function calls.
+- `ENABLE_LANGGRAPH=true` still bundles the same steps — no runtime dependency on `langgraph`.
+
+### Why 14 Packages Total?
+
+- Every dependency was audited against actual imports in the codebase. Removed: `torch`, `transformers`, `sentence-transformers`, `langchain`, `langgraph`, `redis-py` (uses Upstash REST), `python-jose`, `passlib`, `python-dotenv`, `requests` (uses httpx), `loguru`, `guardrails-ai`, `groq`, `google-generativeai`, `openai`, `ragas`, `numpy`, `pandas`, `tqdm`, `tenacity`, `pypdf`, `unstructured`, `python-docx`, etc.
+- The entire application runs on `fastapi`, `uvicorn`, `httpx`, and 11 direct dependencies.
+
+### Why Root-Level requirements.txt?
+
+- Render's `rootDir: backend` makes `backend/` the working directory, so it reads `backend/requirements.txt`.
+- Root `requirements.txt` exists for local development convenience (e.g., running scripts from repo root).
+
+---
+
+## Troubleshooting
+
+### "Failed to fetch" on Login
+
+**Cause**: CORS misconfiguration. The frontend origin is not in the backend's allowed origins.
+
+**Fix**:
+1. Go to Render dashboard → Environment → set `CORS_ORIGINS` to `*` (development) or a comma-separated list of your frontend URLs
+2. Save and redeploy
+3. Verify: `curl -I -X OPTIONS https://your-api.onrender.com/auth/login -H "Origin: http://localhost:5173"` should return `access-control-allow-origin: *`
+
+### "Disallowed CORS origin"
+
+- The `CORS_ORIGINS` env var is set but doesn't include your current frontend URL.
+- Append `http://localhost:5173` (for local dev) or your Vercel URL to the existing value.
+
+### No Module Named 'app'
+
+**Cause**: Render runs from repo root by default, but imports are relative to `backend/`.
+
+**Fix**: Set `rootDir: backend` in `render.yaml` (already configured).
+
+### Cold Start Timeout
+
+Render's free tier spins down after 15 minutes idle. First request takes ~30 seconds.
+
+- Add a keepalive service (e.g., Better Uptime, Kaffeine, or GitHub Actions cron job hitting `/health` every 10 minutes).
+- Or use Render's **Paid plan** ($7/month, no spin-down).
+
+### Streaming Not Working
+
+- Ensure the backend returns `Transfer-Encoding: chunked` (Uvicorn default).
+- Check that Vite's dev proxy forwards SSE correctly (configured in `vite.config.js`).
+- For production, ensure no buffering middleware strips event-stream headers.
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+  Built with ❤️ by <a href="https://www.linkedin.com/in/shreeyansh-asati-18shreey/">Shreeyansh Asati</a>
+</p>
