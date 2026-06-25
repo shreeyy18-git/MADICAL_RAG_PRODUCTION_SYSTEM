@@ -1,0 +1,30 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+
+# Environment files
+.env
+backend/.env
+frontend/.env
+
+# Data files (PDFs are committed separately if needed)
+backend/data/*.pdf
+
+# Supabase temp files
+supabase/.temp/
+
+# Lock files
+uv.lock
+Cargo.lock
+
+# OS files
+Thumbs.db
+.DS_Store

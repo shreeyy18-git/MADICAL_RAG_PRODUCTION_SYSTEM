@@ -1,0 +1,19 @@
+# ============================================================
+# Medical RAG — Backend requirements for Render free tier
+# Mirrors root requirements.txt for CI/CD consistency.
+# ============================================================
+
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+pydantic==2.10.3
+pydantic-settings==2.7.0
+httpx==0.27.2
+PyJWT==2.10.1
+qdrant-client==1.12.1
+supabase==2.10.0
+rank-bm25==0.2.2
+PyMuPDF==1.25.1
+langfuse==2.57.0
+langchain-huggingface==1.2.2
+litellm==1.50.0

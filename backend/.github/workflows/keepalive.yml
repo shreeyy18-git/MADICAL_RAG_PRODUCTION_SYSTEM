@@ -1,0 +1,34 @@
+name: Keep free-tier services alive
+
+# Supabase free projects pause after 7 days with no requests; Qdrant Cloud
+# free clusters auto-suspend after 7 days and delete after 4 weeks. This
+# pings both every 3 days so a demo never shows up dead to a recruiter.
+# It does NOT keep the Render web service warm 24/7 (that would eat into
+# the 750 free instance-hours/month) -- run this workflow manually
+# (workflow_dispatch) a few minutes before a live demo to wake Render up.
+
+on:
+  schedule:
+    - cron: "0 6 */3 * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping-services:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST endpoint
+        run: |
+          curl -sS -o /dev/null -w "Supabase: %{http_code}\n" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"
+
+      - name: Ping Qdrant cluster
+        run: |
+          curl -sS -o /dev/null -w "Qdrant: %{http_code}\n" \
+            "${{ secrets.QDRANT_URL }}/collections" \
+            -H "api-key: ${{ secrets.QDRANT_API_KEY }}"
+
+      - name: Wake up Render web service
+        run: |
+          curl -sS -o /dev/null -w "Render: %{http_code}\n" \
+            "${{ secrets.RENDER_HEALTH_URL }}"

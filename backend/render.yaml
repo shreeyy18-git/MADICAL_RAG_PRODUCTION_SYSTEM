@@ -1,0 +1,117 @@
+services:
+  - type: web
+    name: medical-rag-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # --- Core ---
+      - key: ENVIRONMENT
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      # SUPABASE_JWT_SECRET intentionally left empty — uses JWKS auth
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION
+        value: medical_chunks_local
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_EMBEDDING_MODEL
+        value: gemini-embedding-001
+      - key: EMBEDDING_DIM
+        value: "384"
+
+      # --- Hugging Face cloud embeddings (replaces local PyTorch) ---
+      - key: ENABLE_HUGGINGFACE_EMBEDDINGS
+        value: "true"
+      - key: HUGGINGFACEHUB_API_TOKEN
+        sync: false
+      - key: HUGGINGFACE_EMBEDDING_MODEL
+        value: sentence-transformers/all-MiniLM-L6-v2
+
+      # --- Feature flags ---
+      - key: ENABLE_HYBRID_SEARCH
+        value: "true"
+      - key: ENABLE_QUERY_REWRITE
+        value: "true"
+      - key: ENABLE_LLM_RERANK
+        value: "true"
+      - key: ENABLE_LONG_TERM_MEMORY
+        value: "true"
+      - key: ENABLE_RATE_LIMITING
+        value: "true"
+      - key: ENABLE_GUARDRAILS
+        value: "true"
+      - key: ENABLE_OBSERVABILITY
+        value: "true"
+      - key: ENABLE_RESPONSE_CACHE
+        value: "true"
+      - key: ENABLE_LANGGRAPH
+        value: "true"
+      - key: ENABLE_CROSS_SESSION_HISTORY
+        value: "true"
+      - key: ENABLE_QDRANT_MEMORY
+        value: "false"
+      - key: ENABLE_LOCAL_EMBEDDINGS
+        value: "false"
+
+      # --- Upstash Redis (rate limiting + cache) ---
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "10"
+      - key: RESPONSE_CACHE_TTL_SECONDS
+        value: "86400"
+
+      # --- Retrieval tuning ---
+      - key: RETRIEVAL_TOP_K
+        value: "10"
+      - key: FINAL_CONTEXT_K
+        value: "5"
+
+      # --- LLM config ---
+      - key: LLM_MODEL
+        value: groq/llama-3.3-70b-versatile
+      - key: LLM_FALLBACK_MODEL
+        value: gemini/gemini-2.5-flash
+
+      # --- Cross-session ---
+      - key: SESSION_SIMILARITY_THRESHOLD
+        value: "0.3"
+
+      # --- Langfuse (observability) ---
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_BASE_URL
+        value: https://cloud.langfuse.com
+
+      # --- CORS (set to your Vercel domain, e.g. https://your-app.vercel.app) ---
+      - key: CORS_ORIGINS
+        sync: false
+
+      # --- Admin ---
+      - key: ADMIN_USER_IDS
+        sync: false
+
+      # --- Chunking ---
+      - key: CHUNK_SIZE_TOKENS
+        value: "400"
+      - key: CHUNK_OVERLAP_TOKENS
+        value: "60"
+    healthCheckPath: /health

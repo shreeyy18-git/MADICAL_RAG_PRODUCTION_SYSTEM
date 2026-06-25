@@ -1,0 +1,7 @@
+# Used only by scripts/evaluate_ragas.py, run locally/offline.
+# Deliberately kept out of requirements.txt so the deployed Render
+# service never pulls these (RAGAS drags in pandas/datasets and is
+# unnecessary weight in production).
+ragas==0.2.8
+datasets==3.2.0
+pandas==2.2.3
