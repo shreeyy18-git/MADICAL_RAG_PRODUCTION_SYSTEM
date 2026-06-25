@@ -1,33 +1,20 @@
-# Python
+# Python-generated files
 __pycache__/
 *.py[oc]
-*.egg-info
-.venv/
-backend/.venv/
-
-# Environment
-.env
-backend/.env
-
-# Node
-node_modules/
-frontend/node_modules/
-
-# Build output
-dist/
-frontend/dist/
 build/
+dist/
+wheels/
+*.egg-info
 
-# IDE
-.vscode/
-.idea/
+# Virtual environments
+.venv
 
-# Supabase CLI temp
+# Environment files (contain secrets)
+.env
+
+# Supabase temp files
 supabase/.temp/
 
-# OS
-.DS_Store
+# OS files
 Thumbs.db
-
-# Test files
-test_*.py
+.DS_Store
