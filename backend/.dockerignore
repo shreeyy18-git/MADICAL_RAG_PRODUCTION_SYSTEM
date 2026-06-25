@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.git
+.gitignore
+README.md
+scripts/
+render.yaml
+.venv
+venv/
