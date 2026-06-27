@@ -1,0 +1,126 @@
+{
+  "summary": {
+    "queries": 12,
+    "queries_with_results": 12,
+    "hit_rate": 1.0,
+    "total_chunks": 60,
+    "avg_chunks_per_query": 5.0,
+    "avg_latency_ms": 4904.0,
+    "avg_score": 4.935,
+    "avg_document_diversity": 1.8
+  },
+  "per_query": [
+    {
+      "query": "What are the symptoms of diabetes?",
+      "chunks": 5,
+      "latency_ms": 19513.0,
+      "avg_score": 6.163,
+      "min_score": 0.139,
+      "max_score": 15.311,
+      "documents": 2
+    },
+    {
+      "query": "How is hypertension treated?",
+      "chunks": 5,
+      "latency_ms": 1487.0,
+      "avg_score": 5.161,
+      "min_score": 0.17,
+      "max_score": 8.719,
+      "documents": 1
+    },
+    {
+      "query": "What causes asthma attacks?",
+      "chunks": 5,
+      "latency_ms": 1578.0,
+      "avg_score": 3.98,
+      "min_score": 0.15,
+      "max_score": 9.799,
+      "documents": 2
+    },
+    {
+      "query": "What are the side effects of bronchodilators?",
+      "chunks": 5,
+      "latency_ms": 2086.0,
+      "avg_score": 7.221,
+      "min_score": 0.189,
+      "max_score": 17.886,
+      "documents": 2
+    },
+    {
+      "query": "How is iron deficiency anemia diagnosed?",
+      "chunks": 5,
+      "latency_ms": 1645.0,
+      "avg_score": 0.159,
+      "min_score": 0.139,
+      "max_score": 0.168,
+      "documents": 1
+    },
+    {
+      "query": "What causes chronic kidney disease?",
+      "chunks": 5,
+      "latency_ms": 5337.0,
+      "avg_score": 3.053,
+      "min_score": 0.157,
+      "max_score": 8.325,
+      "documents": 2
+    },
+    {
+      "query": "What is the standard treatment for tuberculosis?",
+      "chunks": 5,
+      "latency_ms": 5726.0,
+      "avg_score": 10.656,
+      "min_score": 0.225,
+      "max_score": 18.265,
+      "documents": 3
+    },
+    {
+      "query": "How does insulin regulate blood sugar?",
+      "chunks": 5,
+      "latency_ms": 2747.0,
+      "avg_score": 2.641,
+      "min_score": 0.111,
+      "max_score": 12.743,
+      "documents": 1
+    },
+    {
+      "query": "What are the risk factors for heart disease?",
+      "chunks": 5,
+      "latency_ms": 5281.0,
+      "avg_score": 10.451,
+      "min_score": 0.133,
+      "max_score": 17.83,
+      "documents": 2
+    },
+    {
+      "query": "What is pneumonia and how is it treated?",
+      "chunks": 5,
+      "latency_ms": 5808.0,
+      "avg_score": 4.137,
+      "min_score": 0.115,
+      "max_score": 20.176,
+      "documents": 2
+    },
+    {
+      "query": "How is blood pressure measured?",
+      "chunks": 5,
+      "latency_ms": 1891.0,
+      "avg_score": 5.45,
+      "min_score": 0.124,
+      "max_score": 13.702,
+      "documents": 2
+    },
+    {
+      "query": "What causes anemia in adults?",
+      "chunks": 5,
+      "latency_ms": 5752.0,
+      "avg_score": 0.151,
+      "min_score": 0.147,
+      "max_score": 0.154,
+      "documents": 1
+    }
+  ],
+  "bm25": {
+    "hit_rate": 1.0,
+    "total_hits": 36
+  }
+}
