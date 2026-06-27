@@ -529,7 +529,11 @@ All flags are configured through environment variables and reported via the `/he
 
 All tests run against the live backend with real API keys (Groq, Gemini, Qdrant, Supabase, Upstash, Langfuse).
 
+<<<<<<< HEAD
 ### Component Tests — 27/27 Passed
+=======
+### Comprehensive Component Tests — 27/27 Passed
+>>>>>>> 279d29bbd19667b8c961089dcf82d2b0f1d50b36
 
 | # | Component | Test | Result | Detail |
 |---|-----------|------|--------|--------|
@@ -589,6 +593,7 @@ All tests run against the live backend with real API keys (Groq, Gemini, Qdrant,
 
 **Result: 5/5 passed**
 
+<<<<<<< HEAD
 ### Retrieval Quality Metrics
 
 Evaluated with 12 diverse medical queries across the document corpus (2 PDFs ingested). Metrics computed from hybrid search (vector + BM25 + LLM reranker) results.
@@ -651,6 +656,8 @@ Assessing the four core RAG quality dimensions using LLM-as-judge methodology wi
 
 **Faithfulness verification:** LLM responses include explicit source citations `[N]` mapped to the retrieved chunk list. The `ANSWER_SYSTEM_PROMPT` instructs the model to answer only from provided sources, and post-generation guardrails verify the output doesn't contain contradictory information.
 
+=======
+>>>>>>> 279d29bbd19667b8c961089dcf82d2b0f1d50b36
 ### LLM Generation Test
 
 ```
